@@ -38,7 +38,7 @@ with st.sidebar:
         with st.spinner("Running solver..."):
             session.sql("CALL SARVAGRAM_DEMO.ANALYTICS.GENERATE_ROUTES('2024-09-15')").collect()
             st.success("Routes generated!")
-            st.rerun()
+            st.experimental_rerun()
 
 terr_filter = ",".join(f"'{t}'" for t in selected_territories) if selected_territories else "''"
 
@@ -57,13 +57,13 @@ unassigned_count = session.sql(f"""
     WHERE RUN_ID = '{selected_run}' AND TERRITORY IN ({terr_filter})
 """).collect()[0]["CNT"]
 
-with st.container(horizontal=True):
-    st.metric("Routes", str(kpi["TOTAL_ROUTES"]), border=True)
-    st.metric("Assigned Stops", str(kpi["TOTAL_STOPS"]), border=True)
-    st.metric("Total Distance (km)", f"{kpi['TOTAL_DIST_KM']}", border=True)
-    st.metric("P1 Coverage", f"{kpi['AVG_PRIORITY_COV']}%", border=True)
-    st.metric("Violations", str(kpi["TOTAL_VIOLATIONS"]), border=True)
-    st.metric("Unassigned", str(unassigned_count), border=True)
+c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1.metric("Routes", str(kpi["TOTAL_ROUTES"]))
+c2.metric("Assigned Stops", str(kpi["TOTAL_STOPS"]))
+c3.metric("Total Distance (km)", f"{kpi['TOTAL_DIST_KM']}")
+c4.metric("P1 Coverage", f"{kpi['AVG_PRIORITY_COV']}%")
+c5.metric("Violations", str(kpi["TOTAL_VIOLATIONS"]))
+c6.metric("Unassigned", str(unassigned_count))
 
 # --- Baseline comparison ---
 st.subheader("Optimized vs Baseline Comparison")
@@ -74,21 +74,11 @@ comparison = session.sql(f"""
 """).to_pandas()
 
 if not comparison.empty:
-    st.dataframe(comparison, use_container_width=True, hide_index=True,
-        column_config={
-            "TERRITORY": "Territory", "AGENT_TOKEN": "Agent", "TOTAL_STOPS": "Stops",
-            "OPTIMIZED_DIST_KM": st.column_config.NumberColumn("Optimized (km)", format="%.1f"),
-            "NAIVE_DIST_KM": st.column_config.NumberColumn("Naive (km)", format="%.1f"),
-            "DISTANCE_SAVINGS_PCT": st.column_config.NumberColumn("Savings %", format="%.1f%%"),
-            "PRIORITY_COVERAGE_PCT": st.column_config.NumberColumn("P1 Coverage", format="%.0f%%"),
-            "SOLVER_METHOD": "Solver",
-            "DISTANCE_NOTE": st.column_config.TextColumn("Note", width="large"),
-        })
+    st.dataframe(comparison, use_container_width=True)
 
-    with st.container(border=True):
-        st.markdown("**Distance Savings by Territory**")
-        chart_data = comparison[["TERRITORY", "OPTIMIZED_DIST_KM", "NAIVE_DIST_KM"]].set_index("TERRITORY")
-        st.bar_chart(chart_data, height=300)
+    st.markdown("**Distance Savings by Territory**")
+    chart_data = comparison[["TERRITORY", "OPTIMIZED_DIST_KM", "NAIVE_DIST_KM"]].set_index("TERRITORY")
+    st.bar_chart(chart_data)
 
 # --- Route details ---
 st.subheader("Route Details")
@@ -123,35 +113,23 @@ if not route_summary.empty:
             ORDER BY STOP_NUMBER
         """).to_pandas()
 
-        with st.container(border=True):
-            st.markdown(f"**Ordered Stops for {selected_agent}**")
-            st.dataframe(stops, use_container_width=True, hide_index=True,
-                column_config={
-                    "STOP_NUMBER": "#", "TASK_ID": "Task", "ACCOUNT_TOKEN": "Account",
-                    "LEG_KM": st.column_config.NumberColumn("Leg (km)", format="%.2f",
-                        help="Straight-line distance, NOT road distance"),
-                    "CUM_KM": st.column_config.NumberColumn("Cumulative (km)", format="%.2f"),
-                    "EXPECTED_ARRIVAL_MIN": st.column_config.NumberColumn("ETA (min)", format="%d"),
-                    "SERVICE_DURATION_MIN": st.column_config.NumberColumn("Service (min)", format="%d"),
-                    "TASK_PRIORITY": st.column_config.NumberColumn("Priority"),
-                    "EST_AMT": st.column_config.NumberColumn("Amount (INR)", format="₹%.0f"),
-                })
+        st.markdown(f"**Ordered Stops for {selected_agent}**")
+        st.dataframe(stops, use_container_width=True)
 
-        with st.container(border=True):
-            st.markdown("**Route Map (approximate positions)**")
-            import pandas as pd
-            agent_base = session.sql(f"""
-                SELECT BASE_LATITUDE AS lat, BASE_LONGITUDE AS lon
-                FROM SARVAGRAM_DEMO.RAW.AGENTS WHERE AGENT_TOKEN = '{selected_agent}'
-            """).to_pandas()
-            stop_coords = session.sql(f"""
-                SELECT CUSTOMER_LATITUDE AS lat, CUSTOMER_LONGITUDE AS lon
-                FROM SARVAGRAM_DEMO.ANALYTICS.ROUTE_STOPS
-                WHERE RUN_ID = '{selected_run}' AND AGENT_TOKEN = '{selected_agent}'
-                ORDER BY STOP_NUMBER
-            """).to_pandas()
-            all_points = pd.concat([agent_base, stop_coords], ignore_index=True)
-            st.map(all_points, size=50)
+        st.markdown("**Route Map (approximate positions)**")
+        import pandas as pd
+        agent_base = session.sql(f"""
+            SELECT BASE_LATITUDE AS lat, BASE_LONGITUDE AS lon
+            FROM SARVAGRAM_DEMO.RAW.AGENTS WHERE AGENT_TOKEN = '{selected_agent}'
+        """).to_pandas()
+        stop_coords = session.sql(f"""
+            SELECT CUSTOMER_LATITUDE AS lat, CUSTOMER_LONGITUDE AS lon
+            FROM SARVAGRAM_DEMO.ANALYTICS.ROUTE_STOPS
+            WHERE RUN_ID = '{selected_run}' AND AGENT_TOKEN = '{selected_agent}'
+            ORDER BY STOP_NUMBER
+        """).to_pandas()
+        all_points = pd.concat([agent_base, stop_coords], ignore_index=True)
+        st.map(all_points)
 
 # --- Unassigned tasks ---
 st.subheader("Unassigned Tasks")
@@ -165,12 +143,7 @@ unassigned = session.sql(f"""
 """).to_pandas()
 
 if not unassigned.empty:
-    st.dataframe(unassigned, use_container_width=True, hide_index=True,
-        column_config={
-            "TASK_ID": "Task", "ACCOUNT_TOKEN": "Account", "TERRITORY": "Territory",
-            "REASON": "Reason", "TASK_PRIORITY": "Priority",
-            "EST_AMT": st.column_config.NumberColumn("Amount (INR)", format="₹%.0f"),
-        })
+    st.dataframe(unassigned, use_container_width=True)
 else:
     st.success("All tasks assigned!")
 
